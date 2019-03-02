@@ -71,7 +71,7 @@ $db['hat'] = array(
 	'dbdriver' => 'mysqli',
 	'dbprefix' => '',
 	'pconnect' => FALSE,
-	'db_debug' => TRUE,
+	'db_debug' => FALSE,
 	'cache_on' => FALSE,
 	'cachedir' => '',
 	'char_set' => 'utf8',
@@ -93,7 +93,7 @@ $db['ragnarok'] = array(
 	'dbdriver' => 'mysqli',
 	'dbprefix' => '',
 	'pconnect' => FALSE,
-	'db_debug' => TRUE,
+	'db_debug' => FALSE,
 	'cache_on' => FALSE,
 	'cachedir' => '',
 	'char_set' => 'utf8',
@@ -105,7 +105,6 @@ $db['ragnarok'] = array(
 	'failover' => array(),
 	'save_queries' => TRUE
 );
-
 /*
 $db['ragnarok2'] = array(
 	'dsn'	=> '',

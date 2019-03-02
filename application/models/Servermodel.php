@@ -75,6 +75,10 @@ Class Servermodel extends CI_Model {
 			$this->db_login->where('userid', $servername);
 			$q6 = $this->db_login->get();
 			$laststartdate = $q6->row();
+			if (!isset($laststartdate)) {
+				$data = "servernameinvalid";
+				return $data;
+			}
 			$serverstart = new DateTime($laststartdate->lastlogin);
 			$now = date('Y-m-d H:i:s');
 			$sinceStart = $serverstart->diff(new DateTime($now));
@@ -83,15 +87,16 @@ Class Servermodel extends CI_Model {
 		}
 		// Get users online
 		$q7 = $this->db_charmap->get_where('char', array('online' => 1));
-
+		
+		$whosOnlineLink = "<a href='".base_url('character/whosonline')."'>Players Online</a>";
 		$data = array(
-			'Server Uptime'				=> $sinceStartf,
-			'<a href="/character/whosonline">Players Online</a>'				=> number_format($q7->num_rows()),
-			'Accounts Registered'		=> number_format($q->num_rows()),
-			'Characters Created'			=> number_format($q2),
-			'Guilds Established'			=> number_format($q3),
-			'Characters in guilds'		=> number_format($q4->num_rows()),
-			'Zeny in Circulation'		=> number_format($zeny->zeny),
+			'hercUptime'				=> $sinceStartf,
+			'onlineNum'				=> number_format($q7->num_rows()),
+			'acctsNum'		=> number_format($q->num_rows()),
+			'charsNum'			=> number_format($q2),
+			'guildsNum'			=> number_format($q3),
+			'guildsCharsNum'		=> number_format($q4->num_rows()),
+			'zenyNum'		=> number_format($zeny->zeny),
 		);
 		if ($t = 1) {
 			// Get more stats for the maintenance info page.
@@ -143,7 +148,7 @@ Class Servermodel extends CI_Model {
 			$serverData['RAM']['used'] = $this->format_bytes($xml->mem->virtual->used);
 			$serverData['RAM']['free'] = $this->format_bytes($xml->mem->virtual->avail);
 			$serverData['RAM']['total'] = $this->format_bytes($xml->mem->virtual->total);
-			$serverData['RAM']['used_pct'] = $xml->mem->virtual->pct;
+			$serverData['RAM']['used_pct'] = round($xml->mem->virtual->used/$xml->mem->virtual->total*100, 2);
 			$serverData['RAM']['swapUsed'] = $this->format_bytes($xml->mem->swap->used);
 			$serverData['RAM']['swapFree'] = $this->format_bytes($xml->mem->swap->avail);
 			$serverData['RAM']['swapTotal'] = $this->format_bytes($xml->mem->swap->total);
@@ -151,7 +156,7 @@ Class Servermodel extends CI_Model {
 			$serverData['disk']['total'] = $this->format_bytes($xml->disk->total);
 			$serverData['disk']['used'] = $this->format_bytes($xml->disk->used);
 			$serverData['disk']['free'] = $this->format_bytes($xml->disk->free);
-			$serverData['disk']['used_percent'] = round($xml->disk->used / $xml->disk->total * 100, 2);
+			$serverData['disk']['used_pct'] = round($xml->disk->used / $xml->disk->total * 100, 2);
 			return $serverData;
 		}
 		else {
@@ -166,10 +171,10 @@ Class Servermodel extends CI_Model {
 		$login_servers = $this->config->item('login_servers');
 		$login_srv_id = $servers[$sid]['login_server_group'];
 		if ($svr == "all") {
-			$login_server = @fsockopen($login_servers[$login_srv_id]['login_ip'], $login_servers[$login_srv_id]['login_port'], $errno, $errstr, 3);
-			$char_server = @fsockopen($servers[$sid]['server_ip'], $servers[$sid]['char_port'], $errno, $errstr, 3);
-			$map_server = @fsockopen($servers[$sid]['server_ip'], $servers[$sid]['map_port'], $errno, $errstr, 3);
-			if (!$map_server || !$char_server || !$login_server) { // One of the servers is not running.
+			$login_server = @stream_socket_client("tcp://{$login_servers[$login_srv_id]['login_ip']}:{$login_servers[$login_srv_id]['login_port']}", $errno, $errstr, 1);
+			$char_server = @stream_socket_client("tcp://{$servers[$sid]['server_ip']}:{$servers[$sid]['char_port']}", $errno, $errstr, 1);
+			$map_server = @stream_socket_client("tcp://{$servers[$sid]['server_ip']}:{$servers[$sid]['map_port']}", $errno, $errstr, 1);
+			if (!is_resource($map_server) || !is_resource($char_server) || !is_resource($login_server)) { // One of the servers is not running.
 				return false;
 			}
 			else {
@@ -177,9 +182,8 @@ Class Servermodel extends CI_Model {
 			}
 		}
 		else if ($svr == "login") {
-
-			$server = @fsockopen($login_servers[$login_srv_id]['login_ip'], $login_servers[$login_srv_id]['login_port'], $errno, $errstr, 3);
-			if (!$server) { // Server did not start.
+			$server = @stream_socket_client("tcp://{$login_servers[$login_srv_id]['login_ip']}:{$login_servers[$login_srv_id]['login_port']}", $errno, $errstr, 1);
+			if (!is_resource($server)) { // Server did not start.
 				return false;
 			}
 			else {
@@ -188,8 +192,8 @@ Class Servermodel extends CI_Model {
 		}
 		else {
 			$port = $svr."_port";
-			$server = @fsockopen($servers[$sid]['server_ip'], $servers[$sid][$port], $errno, $errstr, 3);
-			if (!$server) { // Server did not start.
+			$server = @stream_socket_client("tcp://{$servers[$sid]['server_ip']}:{$servers[$sid][$port]}", $errno, $errstr, 1);
+			if (!is_resource($server)) { // Server did not start.
 				return false;
 			}
 			else {
@@ -207,8 +211,8 @@ Class Servermodel extends CI_Model {
 		$status = $this->server_online_check($sid, $svr);
 		if ($status == false) { // This server is not running, start it.
 			$this->server_start($sid, $svr);
-			while ($this->server_online_check($sid, $svr) == false && $checks < 6) { // while the server has not started OR we haven't tried more than 5 times...
-				sleep(2);
+			while ($this->server_online_check($sid, $svr) == false && $checks < 7) { // while the server has not started OR we haven't tried more than 5 times...
+				sleep(1);
 				$checks += 1;
 			}
 			if ($this->server_online_check($sid, $svr) == false) {
@@ -281,7 +285,7 @@ Class Servermodel extends CI_Model {
 				break;
 			case "map":
 				$this->charmap_ssh_conn->exec($cmd_screen); // Open a screen for the map server
-				$this->charmap_ssh_conn->exec($cmd_map); // Change directort to the map-server exec
+				$this->charmap_ssh_conn->exec($cmd_map); // Change directory to the map-server exec
 				break;
 		}
 	}
